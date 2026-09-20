@@ -1,0 +1,13 @@
+requests
+openai
+Ipython
+python-dotenv
+pandas
+numpy
+openpyxl
+pyyaml
+ipykernel
+openai-agents
+pydantic
+tavily-python
+crewai
