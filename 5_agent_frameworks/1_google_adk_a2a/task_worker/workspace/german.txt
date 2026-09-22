@@ -1,0 +1,6 @@
+Willkommen im Team.
+
+Heute bauen wir einen kleinen Sprachlehrer, Stück für Stück. Jeder Helfer
+wählt eine einzelne Aufgabe vom gemeinsamen Board aus, erledigt die Arbeit sorgfältig
+und markiert die Aufgabe als erledigt. Lies deine Aufgabe aufmerksam, nimm dir Zeit
+und gib dein Bestes.
