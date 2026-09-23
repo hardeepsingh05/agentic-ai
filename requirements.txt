@@ -34,6 +34,7 @@ google-adk
 a2a-sdk
 litellm>=1.84
 mcp
-"mcp[cli]" 
 fastapi 
 uvicorn
+strands-agents
+pydantic-ai

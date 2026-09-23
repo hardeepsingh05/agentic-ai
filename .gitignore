@@ -27,7 +27,7 @@ __pycache__/
 .ipynb_checkpoints/
 .playwright-mcp/
 
-# ignore some personal files
+# Ignore some personal files
 email.txt
 Profile.pdf
 summary.txt
