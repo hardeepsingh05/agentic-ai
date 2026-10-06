@@ -1,0 +1,6 @@
+Willkommen im Team.
+
+Heute bauen wir einen kleinen Sprachtrainer, Stück für Stück. Jede Hilfskraft
+übernimmt eine einzelne Aufgabe vom gemeinsamen Aufgabenbrett, erledigt die Arbeit
+sorgfältig und markiert die Aufgabe als erledigt. Lies deine Aufgabe genau,
+nimm dir Zeit und gib dein Bestes.

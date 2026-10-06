@@ -33,8 +33,13 @@ wikipedia
 google-adk
 a2a-sdk
 litellm>=1.84
-mcp
+mcp>=2.1.0,<3.0.0
+fastmcp>=4.0.0,<5.0.0
 fastapi 
 uvicorn
 strands-agents
 pydantic-ai
+agent-framework-core
+agent-framework-openai
+agno[mcp]
+rich
