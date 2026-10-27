@@ -6,6 +6,8 @@ __pycache__/
 # Ignore virtual environment directories
 .venv312/
 .venv/
+.venv*/
+venv/
 
 # Ignore local environment files and credentials, but retain the safe template
 .env
@@ -32,3 +34,25 @@ email.txt
 Profile.pdf
 summary.txt
 user_message.txt
+
+# Ignore the agent loop's generated output: the games, shared style and hub page are rebuilt on every run
+5_agent_frameworks/5_agent_loop/site/
+
+# Ignore screenshots written by the browser tools
+screenshot*.png
+
+# Ignore Node packages and Python tool caches
+node_modules/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Ignore private keys and certificates
+*.pem
+*.key

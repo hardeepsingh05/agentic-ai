@@ -43,3 +43,5 @@ agent-framework-core
 agent-framework-openai
 agno[mcp]
 rich
+openai-agents
+mcp-server-fetch

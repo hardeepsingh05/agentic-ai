@@ -51,10 +51,13 @@ def _read_title(game_html: Path) -> str:
     The title builder gave its game, read from game.html (empty if not found).
     
     Args: 
-        game_html: Path = path of the file which contains title of the game.
+        game_html: Path to the game's game.html.
     
     Returns: 
-        It gives title of the game decided by builder agent if given else an empty string.
+        The text of the page's <title>, or an empty string if it has none or the file cannot be read.
+
+    Raises:
+        UnicodeDecodeError: If game.html is not valid UTF-8.
     """
 
     try:
@@ -68,10 +71,13 @@ def is_built(folder: Path) -> bool:
     True if all three game files exist in the folder and are non-empty.
 
     Args:
-        folder: Path = Path to the folder
+        folder: The game's folder under the site directory.
 
     Returns:
-        Bool: True/False = Based on availability of the required files, it will return True/False.
+        True if game.html, game.css and game.js all exist and are non-empty, otherwise False.
+
+    Raises:
+        OSError: If a file's size cannot be read, for example because of a permissions error.
     """
     return all(
         (folder / file).exists() and (folder / file).stat().st_size for file in GAME_FILES
@@ -84,15 +90,19 @@ def _launch(goal_id: int, worker: dict, board_path: Path) -> subprocess.Popen:
     Stdout and stderr go to DEVNULL: a worker's framework banner would otherwise tear the live board, 
     and the worker only ever talks to us through the board. On POSIX, start_new_session puts the worker and
     its uv/npx/MCP tree in their own session so a timeout can stop the whole tree at once; on Windows the same job is done by
-    taskkill /T in _terminate, so on new group is needed at launch.
+    taskkill /T in _terminate, so no new group is needed at launch.
 
     Args:
-        goal_id: int = Identity number of the goal given to the worker agent.
-        worker: dict = A dictionary containing all the metadata for a worker agent.
-        board_path: Path to the board storage directory.
+        goal_id: ID of the board goal the worker should take.
+        worker: The worker manifest record from catalog.WORKERS.
+        board_path: Path to the shared board file.
 
     Returns:
         subprocess.Popen: The launched worker process.
+
+    Raises:
+        OSError: If the worker's interpreter or script cannot be started.
+        KeyError: If the worker record has no "file" or "runner" entry.
     """
 
     argv = catalog.launch_argv(worker, goal_id, board_path)
@@ -109,10 +119,13 @@ def _terminate(procedure: subprocess.Popen) -> None:
     does the same.
 
     Args:
-        procedure: subprocess.Popen = The launched worker process.
+        procedure: The worker process to stop.
     
     Returns: 
         None
+
+    Raises:
+        None: ProcessLookupError and OSError from a process that has already exited are caught and ignored.
     """
     try:
         if sys.platform == "win32":
@@ -130,9 +143,33 @@ class Team:
     """
     The orchestrator's working state: the discovered workers and what has been
     launched so far. The tools read and mutate this; the agent never sees it.
+
+    Attributes:
+        language: The language the arcade teaches.
+        workers: The discovered worker manifest records.
+        site_dir: The shared site folder every game is built into.
+        board_path: The shared board file.
+        by_key: Workers indexed by framework key.
+        by_slug: Workers indexed by the folder their game is built in.
+        objectives: The learning objective assigned to each worker, by slug.
+        registry: Each launched goal's ID mapped to its worker, so the live board can colour it.
+        pending: Worker processes launched but not yet waited for.
+        fixed: Slugs of the workers that have already used their one fix.
     """
 
     def __init__(self, language: str, workers: list[dict], site_dir: Path, board_path: Path) -> None:
+        """
+        Set up an empty team state for one run.
+
+        Args:
+            language: The language the arcade teaches.
+            workers: The worker manifest records returned by catalog.discover().
+            site_dir: The shared site folder.
+            board_path: The shared board file.
+
+        Raises:
+            KeyError: If a worker record has no "key" or "slug" entry.
+        """
         self.language = language
         self.workers = workers
         self.site_dir = site_dir
@@ -145,9 +182,30 @@ class Team:
         self.fixed: set[str] = set() # slugs that have had their one fix
     
     def _built(self, slug: str) -> bool:
+        """
+        Whether a worker's game is complete on disk.
+
+        Args:
+            slug: The worker's folder name.
+
+        Returns:
+            True if all three game files exist and are non-empty.
+
+        Raises:
+            OSError: If a file's size cannot be read.
+        """
         return is_built(self.site_dir / slug)
     
     def status(self) -> str:
+        """
+        Summarise the team: each builder, its objective once assigned, and whether its game is built.
+
+        Returns:
+            A multi-line "Team status" text the orchestrator reads after waiting.
+
+        Raises:
+            OSError: If a game file's size cannot be read.
+        """
         lines = []
         for worker in self.workers:
             slug = worker["slug"]
@@ -161,7 +219,11 @@ class Team:
         The built games as [{label, slug}], each labelled by the title its builder gave it.
 
         Returns:
-            Provides a dictionary which will contain game's {label/title: worker_node} k,v pairs for finished worker subprocess.
+            A list of {"label", "slug"} dictionaries, one per built game: its title and the folder to link.
+
+        Raises:
+            OSError: If a game file's size cannot be read.
+            UnicodeDecodeError: If a built game.html is not valid UTF-8.
         """
         games = []
         for worker in self.workers:
@@ -180,14 +242,21 @@ def make_tools(team: Team) -> list:
     Build the orchestrator agent's tools as closures over the team state. These would be simple async functions without any decorator for the orchestrator to get things done.
 
     Args:
-        team: Team - a class defined for orchestrator to monitor states of the worker.
+        team: The shared Team state the tools read and update.
 
     Returns:
-        A list of tools or functions for orchestrator agent to be used.
+        The six tools handed to the orchestrator agent: author_style, launch_worker, wait_for_team, test_game,
+        relaunch_worker and build_hub.
     """
     async def author_style() -> str:
         """
         Author the arcade's shared house style (common.css). Do this once, before the builders start.
+
+        Returns:
+            A confirmation that common.css was written.
+
+        Raises:
+            OSError: If the site folder or common.css cannot be written.
         """
         await css_agent.author_style(team.language, team.site_dir)
         return "Authored common.css, the shared house style for the arcade."
@@ -199,12 +268,17 @@ def make_tools(team: Team) -> list:
         Start all your builders, then call wait_for_team.
 
         Args:
-            framework: the framework key, one of strands, pydantic, maf, agno, mastra.
-            objective: the {language} learning objective this builder's game teaches, e.g. "greetings" or "common verbs".
+            framework: the framework key of the builder to start, one of those listed in your team.
+            objective: the learning objective this builder's game teaches, e.g. "greetings" or "common verbs".
                         Give each builder a different one.
 
         Returns:
-            A confirmation saying, this specific worker has been launched with its objective.
+            A confirmation that the builder was launched, or a message saying why it was not (unknown framework,
+            or already started).
+
+        Raises:
+            OSError: If the game folder cannot be created or the worker process cannot be started.
+            sqlite3.Error: If the goal cannot be written to the shared board.
         """
 
         worker = team.by_key.get(framework)
@@ -225,7 +299,11 @@ def make_tools(team: Team) -> list:
         """
         Wait until every builder you have started has finished, watching the shared board fill in while they work.
         
-        Returns: the status of games which are getting built.
+        Returns:
+            The team status: each builder and whether its game is built.
+
+        Raises:
+            sqlite3.Error: If the shared board cannot be read while the live view is drawn.
         """
         procs = team.pending
         team.pending = []
@@ -254,7 +332,10 @@ def make_tools(team: Team) -> list:
             slug: the builder's folder name, which is its framework key, e.g. strands.
 
         Returns:
-            A string indicating about the game made by any worker, if it works or broken.
+            A message saying whether the game WORKS or is BROKEN with a one-sentence note, or why it could not be checked.
+
+        Raises:
+            None: any error during the check is caught and returned as a message, so the orchestrator can carry on.
         """
 
         worker = team.by_slug.get(slug)
@@ -284,14 +365,19 @@ def make_tools(team: Team) -> list:
     def relaunch_worker(framework: str, problem: str) -> str:
         """
         Send a framework's builder back to fix its game, once. Returns immediately;
-        call wait_for_team afterwards. Each game gets at most one fix attempts.
+        call wait_for_team afterwards. Each game gets at most one fix attempt.
 
         Args:
             framework: the framework key whose game is broken.
             problem: one short sentence describing what is broken.
 
         Returns:
-            A string indicating that the specific worker has been sent for correcting its game.
+            A confirmation that the builder was sent back, or a message saying why it was not (unknown framework, or its
+            one fix was already used).
+
+        Raises:
+            OSError: If the worker process cannot be started.
+            sqlite3.Error: If the fix task cannot be written to the shared board.
         """
 
         worker = team.by_key.get(framework)
@@ -314,7 +400,10 @@ def make_tools(team: Team) -> list:
         this once, after the games are built and checked.
 
         Returns:
-            A string indicating that the authored html files have been sent for link up.
+            A confirmation naming the games linked from index.html, or a note that there are none to link yet.
+
+        Raises:
+            OSError: If index.html cannot be written.
         """
         games = team.finished_games()
         if not games:
@@ -326,13 +415,17 @@ def make_tools(team: Team) -> list:
         
 def _build_agent(team: Team) -> LlmAgent:
     """
-    Setting up the orchestrator agent with its prompt, instructions, and tools.
+    Build the orchestrator agent from its prompt, the team roster and its tools.
 
     Args:
-        team: a class defined for orchestrator to monitor states of the worker.
-    
+        team: The shared Team state.
+
     Returns:
-        An orchestrator agent.
+        google.adk.agents.LlmAgent: The orchestrator agent.
+
+    Raises:
+        KeyError: If the prompt template expects a field that is not supplied.
+        ImportError: If google-adk or litellm is not installed.
     """
 
     team_lines = "\n".join(
@@ -342,20 +435,23 @@ def _build_agent(team: Team) -> LlmAgent:
     instruction = prompts.ORCHESTRATOR_PROMPT.format(language=team.language, team=team_lines)
     return LlmAgent(
         name="orchestrator",
-        model=config.ORCHESTRATOR_MODEL, 
+        model=config.adk_model(), 
         instruction=instruction, 
         tools=make_tools(team),
     )
 
 async def _run(team: Team) -> None:
     """
-    Function to be called for running the main orchestrator with error handling.
+    Run the orchestrator agent to completion, stopping cleanly on a model error or when its turn budget runs out.
 
     Args:
-        team: a class defined for orchestrator to monitor states of the worker.
-    
+        team: The shared Team state.
+
     Returns:
         None
+
+    Raises:
+        None: a model or network error stops the run with a printed note instead, so the safety net can finish the site.
     """
     runner = InMemoryRunner(agent = _build_agent(team), app_name=_APP)
     try:
@@ -378,7 +474,7 @@ async def _run(team: Team) -> None:
     except Exception as exc:
         # A transient model or network error (a DNS blip, a 5xx from the API) on the orchestrator's own call would otherwise crash the whole run with a traceback.  
         # The game are already built on disk, so stop cleanly and let the safety net below finish the hub. The type is printed so a real fault is still visible.
-        print(f"\n NOTE: the orchestrator stopped early after an error ({type(exc).__name__}); wrapping up what is built.")
+        print(f"\n NOTE: the orchestrator stopped early after an error ({type(exc).__name__}: {str(exc)[:300]}); wrapping up what is built.")
     finally:
         try:
             await runner.close()
@@ -387,18 +483,21 @@ async def _run(team: Team) -> None:
 
 def _ensure_site(team: Team) -> None:
     """
-    A non-LLM safety net so the site always has a llok and a front door, even if the orchestrator stopped before authoring them. Only fills in what is missing.
-    
+    A non-LLM safety net so the site always has a look and a front door, even if the orchestrator stopped before authoring them. Only fills in what is missing.
+
     Args:
-        team: a class defined for orchestrator to monitor states of the worker.
-    
+        team: The shared Team state.
+
     Returns:
         None
+
+    Raises:
+        OSError: If the template files cannot be written.
     """
     if not (team.site_dir / "common.css").exists():
         css_agent.write_template_style(team.site_dir)
     if not (team.site_dir / "index.html").exists():
-        css.agent.write_template_hub(team.language, team.finished_games(), team.site_dir)
+        css_agent.write_template_hub(team.language, team.finished_games(), team.site_dir)
         print(" NOTE: the orchestrator did not author index.html; wrote the plain template instead.")
 
 def run(language: str, workers: list[dict], site_dir: Path, board_path: Path) -> Team:
@@ -406,13 +505,17 @@ def run(language: str, workers: list[dict], site_dir: Path, board_path: Path) ->
     Reset the shared board, then let the orchestrator agent build and check the arcade.
 
     Args:
-        lanaguage: name of the language to learning whom the game.
-        workers: list of dictionaries containing information around workers.
-        site_dir: a common directory path for all workers.
-        board_path: path to board script file.
-    
+        language: The language the arcade teaches.
+        workers: The worker manifest records returned by catalog.discover().
+        site_dir: The shared site folder every game is built into.
+        board_path: The shared board file.
+
     Returns:
-        Team: a class defined for orchestrator to monitor states of the worker to show final status.
+        Team: The final team state, from which the final status can be read.
+
+    Raises:
+        OSError: If the site folder cannot be created.
+        sqlite3.Error: If the shared board cannot be reset.
     """
     site_dir.mkdir(parents=True, exist_ok=True)
     board.reset_board()
