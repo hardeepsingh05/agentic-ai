@@ -13,6 +13,7 @@ Learning labs and working examples for building AI agents with Azure OpenAI, Azu
 | `5_agent_frameworks/2_strands_pydantic/` | AWS Strands and Pydantic AI labs on Azure OpenAI with a shared task board and an MCP filesystem server, plus their workers for the agent loop. |
 | `5_agent_frameworks/3_maf_agno/` | Microsoft Agent Framework and Agno labs on Azure OpenAI, plus their workers for the agent loop. |
 | `5_agent_frameworks/5_agent_loop/` | The capstone: a Google ADK orchestrator leads four framework workers to build a browser-game arcade, checks each game in a real browser, and writes a home page. See its [README](5_agent_frameworks/5_agent_loop/README.md) for the architecture and how to run it. |
+| `6_mcp/` | MCP labs with the OpenAI Agents SDK: stdio servers for a trading account, long-term memory (knowledge graph), Tavily web search and a Qdrant vector database, plus streamable-HTTP filesystem and browser servers. |
 | `.env.example` | Template listing every setting; copy it to `.env`, which is git-ignored. |
 | `requirements.txt` | Python packages used across the exercises. |
 
@@ -69,6 +70,13 @@ The agent loop (`5_agent_frameworks/5_agent_loop/`) additionally needs `AZURE_OP
 
   Add `--language French`, `--skip agno`, `--dry-run` or `--no-open` as needed. The finished arcade is written to `5_agent_frameworks/5_agent_loop/site/index.html`.
 
+- Work through the MCP labs in `6_mcp/` (`1_lab1.ipynb` to `3_lab3.ipynb`). The stdio servers in `6_mcp/backend/` are started by the notebooks themselves (`python -m backend.<name>_server`), so there is nothing to launch. The streamable-HTTP servers (`filesystem_server.py`, `browser_server.py`) are started with uvicorn, as shown in each file's header. Extra settings:
+  - `TAVILY_API_KEY` for `tavily_server.py`.
+  - `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` for `qdrant_server.py`.
+  - `MASSIVE_API_KEY` is optional; without it the trading floor uses a price simulator.
+
+  The memory server writes `6_mcp/memory/memory.json` and the Qdrant server writes `6_mcp/qdrant/`; both are local data and git-ignored.
+
 ## Notes
 
 - Some labs call paid external model and search services; review provider pricing and deployment availability first.
@@ -86,7 +94,9 @@ The agent loop (`5_agent_frameworks/5_agent_loop/`) additionally needs `AZURE_OP
 - Some other packages (CrewAI, `langchain-mcp-adapters` and Strands) still declare `mcp` 1.x constraints, so `pip check` reports conflicts. The Strands worker was tested against MCP 2 and works; the others were not retested.
 - MCP 2 renamed `FastMCP` to `MCPServer`. The `filesystem_server.py` copies in `1_google_adk_a2a/`, `2_strands_pydantic/` and `3_maf_agno/` still import `FastMCP` and will not start on MCP 2; `5_agent_frameworks/5_agent_loop/filesystem_server.py` shows the updated import (`from mcp.server.mcpserver import MCPServer`).
 - Microsoft Agent Framework's own MCP client does not yet work with MCP 2, which is why the agent loop gives its MAF worker the file tools through `fastmcp` instead.
+- The `6_mcp/` servers import `MCPServer` and fall back to `FastMCP`, so they run on MCP 1.x and 2.x. On Windows, run the `6_mcp` notebooks on MCP 2: Jupyter's event loop cannot start subprocesses, and MCP 1.x's fallback crashes the kernel on Python 3.10.
+- Behind a corporate TLS-inspecting proxy, `tavily_server.py` uses `truststore` to trust the Windows certificate store; `npx`-based MCP servers may not install there, which is why Tavily is implemented in Python.
 
 ## Repository hygiene
 
-`.gitignore` keeps these out of the repository: `.env` and other `.env.*` files (but not `.env.example`), virtual environments, `__pycache__`, SQLite files, logs, Jupyter checkpoints, IDE settings, personal digital-twin files (`email.txt`, `Profile.pdf`, `summary.txt`, `user_message.txt`), screenshots, `node_modules`, tool caches, OS files, private keys, and the agent loop's generated `5_agent_frameworks/5_agent_loop/site/` folder.
+`.gitignore` keeps these out of the repository: `.env` and other `.env.*` files (but not `.env.example`), virtual environments, `__pycache__`, SQLite files, logs, Jupyter checkpoints, IDE settings, personal digital-twin files (`email.txt`, `Profile.pdf`, `summary.txt`, `user_message.txt`), screenshots, `node_modules`, tool caches, OS files, private keys, lock files, the local MCP data (`6_mcp/memory/` and `6_mcp/qdrant/`), and the agent loop's generated `5_agent_frameworks/5_agent_loop/site/` folder.

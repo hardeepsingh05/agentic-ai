@@ -56,3 +56,8 @@ desktop.ini
 # Ignore private keys and certificates
 *.pem
 *.key
+
+
+# Ignore local MCP data: the memory server's knowledge graph and the Qdrant vector store
+6_mcp/memory/
+6_mcp/qdrant/
